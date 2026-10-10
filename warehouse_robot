@@ -1,0 +1,194 @@
+import heapq
+import time
+
+MAP_A = [
+    "S..#....",
+    "##.#.##.",
+    "....~~..",
+    ".####.#.",
+    "...~..#G",
+]
+
+MAP_B = [
+    "S~~~~~~~G",
+    ".#######.",
+    ".........",
+    ".#.#.#.#.",
+    ".........",
+]
+
+MAP_C = [
+    "S..#....",
+    ".#.#.##.",
+    "...#..#.",
+    ".###.##.",
+    "....#..G",
+]
+
+GRID = MAP_A
+
+MOVES = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+
+def find_cell(grid, symbol):
+    for r, row in enumerate(grid):
+        for c, ch in enumerate(row):
+            if ch == symbol:
+                return (r, c)
+    return None
+
+
+def step_cost(grid, cell):
+    r, c = cell
+    return 3 if grid[r][c] == "~" else 1
+
+
+def neighbors(grid, cell):
+    r, c = cell
+    for dr, dc in MOVES:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < len(grid) and 0 <= nc < len(grid[nr]) and grid[nr][nc] != "#":
+            yield (nr, nc)
+
+
+def manhattan(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def build_path(parent, goal):
+    path = []
+    cell = goal
+    while cell is not None:
+        path.append(cell)
+        cell = parent[cell]
+    path.reverse()
+    return path
+
+
+def search(grid, use_heuristic):
+    start = find_cell(grid, "S")
+    goal = find_cell(grid, "G")
+
+    start_time = time.perf_counter()
+
+    counter = 0
+    h0 = manhattan(start, goal) if use_heuristic else 0
+    frontier = [(h0, counter, start)]
+    parent = {start: None}
+    best_g = {start: 0}
+    explored = set()
+
+    nodes_expanded = 0
+    max_frontier = 1
+
+    while frontier:
+        _, _, cell = heapq.heappop(frontier)
+
+        if cell in explored:
+            continue
+        explored.add(cell)
+        nodes_expanded += 1
+
+        if cell == goal:
+            elapsed = time.perf_counter() - start_time
+            path = build_path(parent, goal)
+            return {
+                "path": path,
+                "cost": best_g[goal],
+                "expanded": nodes_expanded,
+                "max_frontier": max_frontier,
+                "time": elapsed,
+            }
+
+        for nxt in neighbors(grid, cell):
+            new_g = best_g[cell] + step_cost(grid, nxt)
+            if nxt not in best_g or new_g < best_g[nxt]:
+                best_g[nxt] = new_g
+                parent[nxt] = cell
+                priority = new_g + (manhattan(nxt, goal) if use_heuristic else 0)
+                counter += 1
+                heapq.heappush(frontier, (priority, counter, nxt))
+                max_frontier = max(max_frontier, len(frontier))
+
+    return {
+        "path": None,
+        "cost": None,
+        "expanded": nodes_expanded,
+        "max_frontier": max_frontier,
+        "time": time.perf_counter() - start_time,
+    }
+
+
+def ucs(grid):
+    return search(grid, use_heuristic=False)
+
+
+def a_star(grid):
+    return search(grid, use_heuristic=True)
+
+
+def show_path_on_map(grid, path):
+    rows = [list(row) for row in grid]
+    for (r, c) in path:
+        if rows[r][c] not in ("S", "G"):
+            rows[r][c] = "*"
+    for row in rows:
+        print("   " + "".join(row))
+
+
+def report(name, grid, result):
+    print(f"Algorithm     : {name}")
+    if result["path"] is None:
+        print("Result        : No path found")
+    else:
+        print(f"Path          : {result['path']}")
+        print(f"Path length   : {len(result['path']) - 1} moves")
+        print(f"Total cost    : {result['cost']}")
+    print(f"Nodes expanded: {result['expanded']}")
+    print(f"Max frontier  : {result['max_frontier']}")
+    print(f"Run time      : {result['time'] * 1000:.4f} ms")
+    if result["path"] is not None:
+        print("Path on map:")
+        show_path_on_map(grid, result["path"])
+    print()
+
+
+def run_on_map(map_name, grid):
+    print("=" * 60)
+    print(f"{map_name}")
+    print("=" * 60)
+    for row in grid:
+        print("   " + row)
+    print()
+    results = {}
+    for name, algo in (("UCS", ucs), ("A* (Manhattan)", a_star)):
+        results[name] = algo(grid)
+        report(name, grid, results[name])
+    return results
+
+
+def print_table(all_results):
+    print("=" * 78)
+    print("RESULTS TABLE")
+    print("=" * 78)
+    header = f"{'Map':<7}{'Algorithm':<16}{'Length':<8}{'Cost':<7}{'Expanded':<10}{'MaxFrontier':<13}{'Time(ms)':<10}"
+    print(header)
+    print("-" * len(header))
+    for map_name, results in all_results.items():
+        for algo, r in results.items():
+            length = len(r["path"]) - 1 if r["path"] else "-"
+            cost = r["cost"] if r["path"] else "-"
+            print(f"{map_name:<7}{algo:<16}{str(length):<8}{str(cost):<7}"
+                  f"{r['expanded']:<10}{r['max_frontier']:<13}{r['time'] * 1000:<10.4f}")
+
+
+if __name__ == "__main__":
+    run_on_map("Selected map (GRID)", GRID)
+
+    all_maps = {"MAP_A": MAP_A, "MAP_B": MAP_B, "MAP_C": MAP_C}
+    all_results = {}
+    for name, g in all_maps.items():
+        if g is not GRID:
+            run_on_map(name, g)
+        all_results[name] = {"UCS": ucs(g), "A* (Manhattan)": a_star(g)}
+    print_table(all_results)
